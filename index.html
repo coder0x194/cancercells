@@ -1,0 +1,419 @@
+<!--
+  ______          ______         __    __         ______         ________        _______  
+ /      \        /      \       |  \  |  \       /      \       |        \      |       \ 
+|  $$$$$$\      |  $$$$$$\      | $$\ | $$      |  $$$$$$\      | $$$$$$$$      | $$$$$$$\
+| $$   \$$      | $$__| $$      | $$$\| $$      | $$   \$$      | $$__          | $$__| $$
+| $$            | $$    $$      | $$$$\ $$      | $$            | $$  \         | $$    $$
+| $$   __       | $$$$$$$$      | $$\$$ $$      | $$   __       | $$$$$         | $$$$$$$\
+| $$__/  \      | $$  | $$      | $$ \$$$$      | $$__/  \      | $$_____       | $$  | $$
+ \$$    $$      | $$  | $$      | $$  \$$$       \$$    $$      | $$     \      | $$  | $$
+  \$$$$$$        \$$   \$$       \$$   \$$        \$$$$$$        \$$$$$$$$       \$$   \$$
+                                                                                          
+-->
+<!Doctype html>
+<html>
+
+<head>
+    <title>Cancer Project</title>
+    <meta name="viewport" content="width=device-width, minimum-scale=1.0">
+    <script type="text/javascript" src="./physicsjs/dist/physicsjs-full.min.js"></script>
+    <script type="text/javascript" src="./physicsjs/lib/pixi.js"></script>
+</head>
+
+<body>
+    <style>
+        html,
+        body {
+            background-color: black;
+            margin: 0px;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        button {
+            margin: 15px;
+            width: 130px;
+            height: 50px;
+            font-size: 20px;
+            background-color: red;
+            color: white;
+            border: none;
+            cursor: pointer;
+            position: absolute;
+        }
+        #protein{
+            margin-top: 80px;
+            background-color: gray;
+            cursor: default;
+        }
+        h1 {
+            position: absolute;
+            color: white;
+            background-color: black;
+            font-size: 24px;
+        }
+
+        #cells {
+            margin-top: 140px;
+            margin-left: 20px;
+        }
+
+        #cancerCells {
+            margin-top: 240px;
+            margin-left: 20px;
+        }
+
+        #normal {
+            margin-top: 190px;
+            margin-left: 20px;
+        }
+
+        #time {
+            margin-top: 290px;
+            margin-left: 20px;
+        }
+
+        #controls {
+            background-color: black;
+        }
+
+        noscript {
+            color: white;
+            margin: auto;
+            text-align: center;
+        }
+    </style>
+    <noscript>
+        <h2>Javascript is disabled. Please enable Javascript to run the simulation.</h2>
+    </noscript>
+    <div id="controls" style="display:none">
+        <button id="cancer">Add Cancer!</button>
+        <button id="protein">Wait...</button>
+        <h1 id="cells">Cells: 50</h1>
+        <h1 id="normal">Normal cells: 50</h1>
+        <h1 id="cancerCells">Cancer cells: 0</h1>
+        <h1 id="time">Time: 0 hours</h1>
+    </div>
+    <script>
+        document.getElementById("controls").style.display = "block";
+        Physics(function(world) {
+            // graphics setup
+            var viewportBounds = Physics.aabb(0, 0, window.innerWidth, window.innerHeight),
+                width = window.innerWidth,
+                height = window.innerHeight,
+                renderer;
+
+            //define variables that store data for the animation
+            var cellMeta = [];
+            var hours = 0;
+            var added = false,
+                paused = false,
+                disabled = false,
+                protein = false;
+
+            // define variables for the cell cycle simulation, including cell lifetime,
+            // mitosis/interphase proportions, and probability of becoming cancerous (determined by researchers)
+            var cellCycle = 24;
+            var lifetime = Math.floor(2.5 * 7 * 24);
+            var mitosis = cellCycle * 0.22;
+            var cancerMitosis = mitosis * 0.2;
+            var interphase = cellCycle - mitosis;
+            var cancerInterphase = (cellCycle - mitosis) * 0.2;
+            var probCancer = 175320 * 2.7 * Math.pow(10, -13);
+
+            // when cancer is added by using the button, spawn four cancerous cells at
+            // random locations with proper mitosis/interphase probability
+            document.getElementById("cancer").onclick = function() {
+                if (!added) {
+                    added = true;
+                    document.getElementById("cancer").innerHTML = "Stop Simulation";
+                    for (var i = 0; i < 4; i++) {
+                        if (Math.random() < (1 - mitosis / cellCycle)) {
+                            // insert cancerous cell in interphase
+                            makeCells(states.cancerInterphase, width * 0.4 + Math.random() * width * 0.2, height * 0.4 + Math.random() * height * 0.2 + 40, false, 0, 0);
+                        }
+                        else {
+                            // insert cancerous cell in mitosis
+                            makeCells(states.cancerMitosis, width * 0.4 + Math.random() * width * 0.2, height * 0.4 + Math.random() * height * 0.2 + 40, true, 0, 0);
+                        }
+                    }
+                }
+
+                // update the status of the button
+                else if (!paused && !disabled) {
+                    clearInterval(interval);
+                    document.getElementById("cancer").innerHTML = "Resume Simulation";
+                    paused = true;
+                }
+                else if (!disabled) {
+                    interval = setInterval(update, 200);
+                    paused = false;
+                    document.getElementById("cancer").innerHTML = "Stop Simulation";
+                }
+            };
+            document.getElementById("protein").onclick = function(){
+                if(disabled){
+                    protein = true;
+                }
+            };
+            //graphics stuff
+            window.PIXI = PIXI;
+            renderer = Physics.renderer('pixi', {
+                el: 'viewport'
+            });
+            world.add(renderer);
+            world.on('step', function(time) {
+                world.render();
+            });
+
+            // define the cell colors: white/blue - normal cell in interphase/mitosis, respectively;
+            // red/pink - cancerous cell in interphase/mitosis, respectively
+            var colors = {
+                white: '0xffffff',
+                blue: '0x278cc6',
+                blueDark: '0x14546f',
+                red: '0xff0000',
+                pink: '0xff3369'
+            };
+
+            // define possible cell states, including interphase and mitosis for cancerous and non-cancerous cells
+            var states = {
+                interphase: 0,
+                mitosis: 1,
+                cancerInterphase: 2,
+                cancerMitosis: 3
+            };
+
+            // graphics stuff - scaling
+            function S(n) {
+                return n * window.innerWidth / 600;
+            }
+
+            // create 50 cells clustered in the center when the simulation begins,
+            // respecting mitosis/interphase proportions
+            var l = 50;
+            var cells = [];
+            while (l--) {
+                if (Math.random() > (1 - mitosis / cellCycle)) {
+                    makeCells(states.mitosis, width * 0.35 + Math.random() * width * 0.3, height * 0.4 + Math.random() * height / 5 + 30, false, 0, 0);
+                }
+                else {
+                    makeCells(states.interphase, width * 0.35 + Math.random() * width * 0.3, height * 0.4 + Math.random() * height / 5 + 30, false, 0, 0);
+                }
+            }
+
+            // graphics stuff
+            world.add(cells);
+            var edgeBounce = Physics.behavior('edge-collision-detection', {
+                aabb: viewportBounds,
+                restitution: 0.0,
+                cof: 0.0
+            });
+            world.add(edgeBounce);
+            world.add([
+                Physics.behavior('body-impulse-response'), Physics.behavior('body-collision-detection'), Physics.behavior('sweep-prune')
+            ]);
+
+            Physics.util.ticker.on(function(time) {
+
+                // graphics stuff - cellular physics
+                var normal = 0;
+                for (var i = 0; i < cells.length; i++) {
+                    var vx = cells[i].state.vel.x;
+                    var vy = cells[i].state.vel.y;
+                    cells[i].accelerate(new Physics.vector(-.02 * vx, -.02 * vy));
+                    if (cellMeta[i].state == states.interphase || cellMeta[i].state == states.mitosis) {
+                        normal++;
+                    }
+                }
+
+                //update the time and cell counters onscreen
+                document.getElementById("cells").innerHTML = "Cell count: " + (cells.length);
+                document.getElementById("normal").innerHTML = "Normal cells: " + (normal);
+                document.getElementById("cancerCells").innerHTML = "Cancer cells: " + (cells.length - normal);
+                document.getElementById("time").innerHTML = "Time: " + (Number.parseFloat(hours).toFixed(2)) + " hours";
+                world.step(time);
+            });
+
+            // this function is used to generate new cells during the simulation.
+            // generates cells with the given state (cancerous/noncancerous and interphase/mitosis),
+            // position, and velocity.
+            // the born parameter is used to specify whether the cell was spawned or produced as a result of mitosis
+            // for animation purposes.
+            function makeCells(newState, x, y, born, vx, vy) {
+                var color = colors.white;
+                switch (newState) {
+                    case states.cancerInterphase:
+                        color = colors.red;
+                        cellMeta.push({ color: color, state: newState, time: (born) ? cancerInterphase * Math.random() / 4 : cancerInterphase * Math.random(), deathTime: (born) ? 0 : Math.random() * lifetime * 1.5 * Math.pow(0.997, cells.length) });
+                        break;
+                    case states.interphase:
+                        color = colors.white;
+                        cellMeta.push({ color: color, state: newState, time: (born) ? 0 : interphase * Math.random(), deathTime: (born) ? 0 : Math.random() * lifetime * Math.pow(0.997, cells.length) });
+                        break;
+                    case states.mitosis:
+                        color = colors.blue;
+                        cellMeta.push({ color: color, state: newState, time: (born) ? 0 : mitosis * Math.random(), deathTime: (born) ? 0 : Math.random() * lifetime * Math.pow(0.997, cells.length) });
+                        break;
+                    case states.cancerMitosis:
+                        color = colors.pink;
+                        cellMeta.push({ color: color, state: newState, time: (born) ? cancerMitosis * Math.random() / 4 : cancerMitosis * Math.random(), deathTime: (born) ? 0 : Math.random() * lifetime * 1.5 * Math.pow(0.997, cells.length) });
+                        break;
+                }
+                cells.push(Physics.body('circle', {
+                    x: x,
+                    y: y,
+                    vx: vx,
+                    vy: vy,
+                    radius: S(7),
+                    mass: 1,
+                    restitution: 1,
+                    styles: {
+                        strokeStyle: colors.darkBlue,
+                        fillStyle: color,
+                        lineWidth: 1
+                    }
+                }));
+            }
+
+            // this function simulates cellular activities and accounts for the transition between interphase
+            // and mitosis as well as the probability of the cell dying or becoming cancerous.
+            var interval = setInterval(update, 200);
+
+            function update() {
+                // 2 seconds = 1 hour
+                hours += 0.1;
+
+                // for each cell...
+                for (var i = 0; i < cellMeta.length; i++) {
+                    cellMeta[i].time += 0.1;
+                    cellMeta[i].deathTime += 0.1;
+
+                    // chance that the cell dies, which increases as the concentration of cells increases
+                    // due to resource starvation by a factor of ~1.003 per cell
+                    var deathFactor = 1;
+                    if (cellMeta[i].state == states.cancerInterphase || cellMeta[i].state == states.cancerMitosis) {
+
+                        // cancer cells are 1.5 times less likely to die
+                        deathFactor = 1.5;
+                    }
+                    if (cellMeta[i].deathTime >= deathFactor * lifetime * Math.pow(0.997, cells.length)) {
+
+                        // cell goes bye bye
+                        world.removeBody(cells[i]);
+                        cells.splice(i, 1);
+                        cellMeta.splice(i, 1);
+                        i--;
+                    }
+                    else {
+                        // when the cell is in interphase... 
+                        cond0: if (cellMeta[i].state == states.interphase) {
+                            if (hours * probCancer >= 0.5 * Math.random()) {
+
+                                // cell becomes cancerous per our predetermined probability
+                                changeStates(i, states.cancerInterphase, [cells[i].state.vel.x, cells[i].state.vel.y]);
+                                break cond0;
+                            }
+                            if (cellMeta[i].time >= interphase) {
+
+                                // cell enters mitosis because it has spent the proper amount of time in interphase
+                                changeStates(i, states.mitosis, [0, 0]);
+                                cellMeta[i].time = 0;
+                            }
+                        }
+
+                        // when the cell is in mitosis...
+                        else cond1: if (cellMeta[i].state == states.mitosis) {
+                            if (hours * probCancer >= 0.5 * Math.random()) {
+
+                                //cell becomes cancerous per our predetermined probability
+                                changeStates(i, states.cancerMitosis, [cells[i].state.vel.x, cells[i].state.vel.y]);
+                                break cond1;
+                            }
+                            if (cellMeta[i].time >= mitosis) {
+
+                                // cell undergoes cytokinesis; parent cell changes back to interphase and a daughter cell is spawned
+                                // in the same location; the two drift apart
+                                var vx = (0.2 + Math.random() * 0.35) * ((Math.random() > .5) ? -1 : 1) / 10;
+                                var vy = (0.2 + Math.random() * 0.2) * ((Math.random() > .5) ? -1 : 1) / 10;
+                                makeCells(states.interphase, cells[i].state.pos.x, cells[i].state.pos.y, true, vx, vy);
+                                changeStates(i, states.interphase, [-vx, -vy]);
+                                cellMeta[i].time = 0;
+                            }
+                        }
+
+                        // repeat these same operations for cancerous cells, respecting their time for interphase and mitosis
+                        else if (cellMeta[i].state == states.cancerInterphase) {
+                            if (cellMeta[i].time >= cancerInterphase) {
+                                changeStates(i, states.cancerMitosis, [0, 0]);
+                                cellMeta[i].time = 0;
+                            }
+                        }
+                        else if (cellMeta[i].state == states.cancerMitosis) {
+                            if (cellMeta[i].time >= cancerMitosis) {
+                                var vx = (0.2 + Math.random() * 0.35) * ((Math.random() > .5) ? -1 : 1) / 10;
+                                var vy = (0.2 + Math.random() * 0.2) * ((Math.random() > .5) ? -1 : 1) / 10;
+                                makeCells(states.cancerInterphase, cells[i].state.pos.x, cells[i].state.pos.y, true, vx, vy);
+                                changeStates(i, states.cancerInterphase, [-vx, -vy]);
+                                cellMeta[i].time = 0;
+                            }
+                        }
+                    }
+                }
+
+                // when 500 cells are reached, halt the simulation. It's only a simulation, after all; we don't want to have cancerous PCs...
+                //or do we?
+                if (cells.length > 500) {
+                    clearInterval(interval);
+                    disabled = true;
+                    document.getElementById("cancer").innerHTML = "Simulation finished";
+                    document.getElementById("cancer").style.backgroundColor = "gray";
+                    document.getElementById("cancer").style.cursor = "default";
+                    document.getElementById("protein").style.backgroundColor = "red";
+                    document.getElementById("protein").style.cursor = "pointer";
+                    document.getElementById("protein").innerHTML = "Neutralize Cancer!";
+                }
+            }
+
+            // this function changes the cell state and updates its metadata accordingly
+            // used to transition from interphase to mitosis and noncancerous to cancerous
+            function changeStates(n, newState, speed) {
+                cellMeta[n].state = newState;
+                switch (newState) {
+                    case states.cancerInterphase:
+                        cellMeta[n].color = colors.red;
+                        break;
+                    case states.cancerMitosis:
+                        cellMeta[n].color = colors.pink;
+                        break;
+                    case states.interphase:
+                        cellMeta[n].color = colors.white;
+                        break;
+                    case states.mitosis:
+                        cellMeta[n].color = colors.blue;
+                        break;
+                }
+                var state = cells[n].state;
+                world.removeBody(cells[n]);
+                delete cells[n];
+                state.vel = new Physics.vector(speed[0], speed[1]);
+                cells[n] = Physics.body('circle', {
+                    x: state.pos.x,
+                    y: state.pos.y,
+                    radius: S(7),
+                    mass: 1,
+                    restitution: 1,
+                    styles: {
+                        strokeStyle: colors.darkBlue,
+                        fillStyle: cellMeta[n].color,
+                        lineWidth: 1
+                    }
+                });
+                cells[n].state = state;
+                world.add(cells);
+            }
+        });
+    </script>
+</body>
+</html>
